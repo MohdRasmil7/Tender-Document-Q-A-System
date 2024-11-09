@@ -6,7 +6,7 @@ from nltk.tokenize import sent_tokenize
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain.chains.summarize import load_summarize_chain
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
@@ -80,7 +80,8 @@ def generate_document_summary(vector_store):
         
         # Get the most relevant chunks for summary
         retriever = vector_store.as_retriever(search_kwargs={"k": 5})
-        summary_retrieval_chain = create_retrieval_chain(retriever, summary_chain)
+        summary_retrieval_chain =load_summarize_chain(llm, summary_prompt)
+
         
         # Generate the summary
         response = summary_retrieval_chain.invoke({'input': 'Generate a summary'})
@@ -149,10 +150,8 @@ with st.sidebar:
                         text += page.extract_text()
 
                     # Initialize Google AI Embeddings with the configured API key
-                    embeddings = GoogleGenerativeAIEmbeddings(
-                        model="models/embedding-001",
-                        google_api_key=GOOGLE_API_KEY,
-                    )
+                    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
 
                     # Tokenize the document into sentences using NLTK
                     splitted_text = sent_tokenize(text)

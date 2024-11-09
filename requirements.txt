@@ -4,7 +4,7 @@ langchain==0.0.211
 langchain-google-genai==0.0.1
 langchain-groq==0.0.1
 langchain-community==0.0.6
-Chroma==0.0.7
+chromadb==0.3.26
 nltk==3.8.1
 python-dotenv==1.0.0
-google-generativeai==0.1.0
+google-generativeai>=0.3.1,<0.4.0

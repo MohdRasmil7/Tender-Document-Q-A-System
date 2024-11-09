@@ -1,11 +1,10 @@
-streamlit
-langchain
-python-dotenv
-langchain-community
-pandas
-PyPDF2
-numpy
-sentence-transformers   # For Hugging Face embeddings
-nltk                    # For text splitting (sentence tokenization)
-chromadb                # For vector storage (Chroma)
-langchain_google_genai
+streamlit==1.26.0
+PyPDF2==3.0.1
+langchain==0.0.211
+langchain-google-genai==0.0.1
+langchain-groq==0.0.1
+langchain-community==0.0.6
+Chroma==0.0.7
+nltk==3.8.1
+python-dotenv==1.0.0
+google-generativeai==0.1.0

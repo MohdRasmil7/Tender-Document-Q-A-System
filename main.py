@@ -2,7 +2,7 @@ import streamlit as st
 from PyPDF2 import PdfReader
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from google.generativeai import GoogleGenerativeAIEmbeddings
 from nltk.tokenize import sent_tokenize
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate

@@ -1,0 +1,10 @@
+streamlit
+langchain
+python-dotenv
+langchain-community
+pandas
+PyPDF2
+numpy
+sentence-transformers   # For Hugging Face embeddings
+nltk                    # For text splitting (sentence tokenization)
+chromadb                # For vector storage (Chroma)

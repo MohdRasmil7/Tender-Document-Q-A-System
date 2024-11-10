@@ -5,9 +5,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from nltk.tokenize import sent_tokenize
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
-from langchain.chains import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
-from langchain.chains import load_summarize_chain
+from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
+from langchain.chains.retrieval import create_retrieval_chain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 import os
@@ -76,7 +75,7 @@ def generate_document_summary(vector_store):
         retriever = vector_store.as_retriever(search_kwargs={"k": 5})
         
         # Create summarization chain
-        summary_chain = load_summarize_chain(
+        summary_chain = create_retrieval_chain(
             llm=llm,
             chain_type="stuff",
             prompt=summary_prompt

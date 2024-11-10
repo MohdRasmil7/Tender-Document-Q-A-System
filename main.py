@@ -5,11 +5,12 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from nltk.tokenize import sent_tokenize
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.summarize import load_summarize_chain
+from langchain.chains import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
+from langchain.chains import load_summarize_chain
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 import os
-import google.generativeai as genai
 import nltk
 
 # Explicitly download NLTK data
@@ -18,15 +19,11 @@ nltk.download('punkt', quiet=True)
 # Load environment variables from .env
 load_dotenv()
 
-# Configure Google AI credentials
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+# Configure Groq API key
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in environment variables")
-
-# Configure Google AI
-genai.configure(api_key=GOOGLE_API_KEY)
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY not found in environment variables")
 
 # Initialize the LLM and prompts
 llm = ChatGroq(model='mixtral-8x7b-32768', temperature=0)
@@ -75,17 +72,22 @@ if 'user_query' not in st.session_state:
 # Function to generate document summary
 def generate_document_summary(vector_store):
     try:
-        # Create a chain specifically for summary generation
-        summary_chain = create_stuff_documents_chain(llm, summary_prompt)
-        
-        # Get the most relevant chunks for summary
+        # Create retriever
         retriever = vector_store.as_retriever(search_kwargs={"k": 5})
-        summary_retrieval_chain =load_summarize_chain(llm, summary_prompt)
-
         
-        # Generate the summary
-        response = summary_retrieval_chain.invoke({'input': 'Generate a summary'})
-        return response['answer']
+        # Create summarization chain
+        summary_chain = load_summarize_chain(
+            llm=llm,
+            chain_type="stuff",
+            prompt=summary_prompt
+        )
+        
+        # Get documents from retriever
+        docs = retriever.get_relevant_documents("Generate a summary")
+        
+        # Generate summary
+        summary = summary_chain.run(docs)
+        return summary
     except Exception as e:
         return f"Error generating summary: {str(e)}"
 

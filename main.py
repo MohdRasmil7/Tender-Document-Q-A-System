@@ -1,12 +1,12 @@
 import streamlit as st
 from PyPDF2 import PdfReader
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from nltk.tokenize import sent_tokenize
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain.chains import create_retrieval_chain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 import os
@@ -74,25 +74,48 @@ def generate_document_summary(vector_store):
         # Create retriever
         retriever = vector_store.as_retriever(search_kwargs={"k": 5})
         
-        # Create summarization chain
-        summary_chain = create_retrieval_chain(
+        # Create document chain for summary
+        summary_document_chain = create_stuff_documents_chain(
             llm=llm,
-            chain_type="stuff",
             prompt=summary_prompt
         )
         
-        # Get documents from retriever
-        docs = retriever.get_relevant_documents("Generate a summary")
+        # Create retrieval chain
+        summary_chain = create_retrieval_chain(
+            retriever=retriever,
+            combine_docs_chain=summary_document_chain
+        )
         
         # Generate summary
-        summary = summary_chain.run(docs)
-        return summary
+        response = summary_chain.invoke({"input": "Generate a summary"})
+        return response['answer']
     except Exception as e:
         return f"Error generating summary: {str(e)}"
+
 
 # Function to update query input
 def update_query():
     st.session_state.user_query = st.session_state.quick_question
+
+# Function to save FAISS index
+def save_vector_store(vector_store, index_name="tender_index"):
+    try:
+        vector_store.save_local("faiss_indexes/" + index_name)
+        return True
+    except Exception as e:
+        st.error(f"Error saving index: {str(e)}")
+        return False
+
+# Function to load FAISS index
+def load_vector_store(index_name="tender_index"):
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        if os.path.exists("faiss_indexes/" + index_name):
+            return FAISS.load_local("faiss_indexes/" + index_name, embeddings)
+        return None
+    except Exception as e:
+        st.error(f"Error loading index: {str(e)}")
+        return None
 
 # Page configuration
 st.set_page_config(
@@ -150,15 +173,20 @@ with st.sidebar:
                     for page in pdf_reader.pages:
                         text += page.extract_text()
 
-                    # Initialize Google AI Embeddings with the configured API key
+                    # Initialize embeddings
                     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
 
                     # Tokenize the document into sentences using NLTK
                     splitted_text = sent_tokenize(text)
 
-                    # Create the vector store with the document embeddings
-                    st.session_state.vector_store = Chroma.from_texts(texts=splitted_text, embedding=embeddings)
+                    # Create the FAISS vector store
+                    st.session_state.vector_store = FAISS.from_texts(texts=splitted_text, embedding=embeddings)
+                    
+                    # Save the index
+                    if not os.path.exists("faiss_indexes"):
+                        os.makedirs("faiss_indexes")
+                    save_vector_store(st.session_state.vector_store)
+                    
                     st.success('✨ Document processed successfully!')
             except Exception as e:
                 st.error(f"An error occurred while processing the document: {str(e)}")
@@ -262,8 +290,3 @@ with col2:
         - Check the summary first for key information
     """)
 
-# Footer
-st.markdown("""
-    ---
-    Made by © Muhammed Rasmil
-""")

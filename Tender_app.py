@@ -9,15 +9,73 @@ from langchain.chains.combine_documents.stuff import create_stuff_documents_chai
 from langchain.chains import create_retrieval_chain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
+from pdf2image import convert_from_path
+import pytesseract
 import os
 import nltk
-os.system("pip install sentence-transformers")
 
-# Explicitly download NLTK data
+# Download NLTK data
 nltk.download('punkt', quiet=True)
 
 # Load environment variables from .env
 load_dotenv()
+
+def validate_pdf(file):
+    """Validate and extract text from PDF, using OCR if necessary."""
+    try:
+        if file is None:
+            return False, "No file uploaded"
+        
+        pdf_reader = PdfReader(file)
+        text = ''
+        
+        # Try extracting text normally
+        for page in pdf_reader.pages:
+            text += page.extract_text() or ""
+        
+        # If no extractable text, fall back to OCR
+        if not text.strip():
+            st.warning("No extractable text found. Attempting OCR...")
+            text = ocr_pdf(file)
+            if not text.strip():
+                return False, "The PDF appears to be empty or contains no processable text"
+        
+        return True, text
+    except Exception as e:
+        return False, f"Error reading PDF: {str(e)}"
+
+def ocr_pdf(file):
+    """Convert PDF pages to text using OCR as a fallback."""
+    try:
+        # Convert each page of the PDF to images
+        pages = convert_from_path(file)
+        text = ''
+        for page in pages:
+            text += pytesseract.image_to_string(page)
+        return text
+    except Exception as e:
+        return f"Error during OCR processing: {str(e)}"
+
+def process_text(text):
+    """Process text into vector store"""
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        
+        # Use text splitter for more robust splitting
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len
+        )
+        chunks = text_splitter.split_text(text)
+        
+        if not chunks:
+            return None, "No processable content found in document"
+            
+        vector_store = FAISS.from_texts(texts=chunks, embedding=embeddings)
+        return vector_store, None
+    except Exception as e:
+        return None, f"Error processing document: {str(e)}"
 
 # Configure Groq API key
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
@@ -59,7 +117,7 @@ Below is the content from the document:
 {context}
 </context>
 
-Please provide a clear, professional summary that captures the essential information from this tender document in about 100 words.
+Please provide a clear, professional summary that captures the essential information from this tender document in about 150 words.
 '''
 )
 
@@ -72,27 +130,19 @@ if 'user_query' not in st.session_state:
 # Function to generate document summary
 def generate_document_summary(vector_store):
     try:
-        # Create retriever
         retriever = vector_store.as_retriever(search_kwargs={"k": 5})
-        
-        # Create document chain for summary
         summary_document_chain = create_stuff_documents_chain(
             llm=llm,
             prompt=summary_prompt
         )
-        
-        # Create retrieval chain
         summary_chain = create_retrieval_chain(
             retriever=retriever,
             combine_docs_chain=summary_document_chain
         )
-        
-        # Generate summary
         response = summary_chain.invoke({"input": "Generate a summary"})
         return response['answer']
     except Exception as e:
         return f"Error generating summary: {str(e)}"
-
 
 # Function to update query input
 def update_query():
@@ -101,6 +151,8 @@ def update_query():
 # Function to save FAISS index
 def save_vector_store(vector_store, index_name="tender_index"):
     try:
+        if not os.path.exists("faiss_indexes"):
+            os.makedirs("faiss_indexes")
         vector_store.save_local("faiss_indexes/" + index_name)
         return True
     except Exception as e:
@@ -124,6 +176,7 @@ st.set_page_config(
     page_icon="📄",
     layout="wide"
 )
+
 
 # Custom CSS
 st.markdown("""
@@ -157,42 +210,31 @@ st.markdown("""
 
 # Sidebar for File Upload and Quick Questions
 with st.sidebar:
-    st.header("Upload Tender Document", divider='rainbow')
+    st.header("Upload Tender Document")
     file = st.file_uploader(label='Upload PDF', type='pdf')
 
     if file:
-        # Process the document for embeddings
-        if 'last_uploaded_file' not in st.session_state or st.session_state.last_uploaded_file != file.name:
-            st.session_state.last_uploaded_file = file.name
-            st.session_state.vector_store = None
-
-        if st.session_state.vector_store is None:
-            try:
-                with st.spinner("Processing document..."):
-                    pdf_reader = PdfReader(file)
-                    text = ''
-                    for page in pdf_reader.pages:
-                        text += page.extract_text()
-
-                    # Initialize embeddings
-                    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
-                    # Tokenize the document into sentences using NLTK
-                    splitted_text = sent_tokenize(text)
-
-                    # Create the FAISS vector store
-                    st.session_state.vector_store = FAISS.from_texts(texts=splitted_text, embedding=embeddings)
-                    
-                    # Save the index
-                    if not os.path.exists("faiss_indexes"):
-                        os.makedirs("faiss_indexes")
-                    save_vector_store(st.session_state.vector_store)
-                    
-                    st.success('✨ Document processed successfully!')
-            except Exception as e:
-                st.error(f"An error occurred while processing the document: {str(e)}")
+        # Validate PDF first
+        is_valid, content = validate_pdf(file)
+        if not is_valid:
+            st.error(content)
         else:
-            st.info('💬 Using existing document from session')
+            # Process the document for embeddings
+            if 'last_uploaded_file' not in st.session_state or st.session_state.last_uploaded_file != file.name:
+                st.session_state.last_uploaded_file = file.name
+                st.session_state.vector_store = None
+
+            if st.session_state.vector_store is None:
+                with st.spinner("Processing document..."):
+                    vector_store, error = process_text(content)
+                    if error:
+                        st.error(error)
+                    else:
+                        st.session_state.vector_store = vector_store
+                        save_vector_store(vector_store)
+                        st.success('Document processed successfully!')
+            else:
+                st.info('Using existing document from session')
 
     # Quick Questions Section
     st.subheader("Quick Questions", divider='rainbow')
@@ -262,7 +304,9 @@ with col1:
             try:
                 with st.spinner("Finding answer..."):
                     document_chain = create_stuff_documents_chain(llm, qa_prompt)
-                    retriever = st.session_state.vector_store.as_retriever()
+                    retriever = st.session_state.vector_store.as_retriever(
+                        search_kwargs={"k": 3}
+                    )
                     retriever_chain = create_retrieval_chain(retriever, document_chain)
                     response = retriever_chain.invoke({'input': user_prompt})
                     
@@ -290,4 +334,3 @@ with col2:
         - Use quick questions for common queries
         - Check the summary first for key information
     """)
-

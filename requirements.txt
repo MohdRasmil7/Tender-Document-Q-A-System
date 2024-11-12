@@ -18,3 +18,4 @@ tqdm>=4.65.0
 gpt4all==2.0.2
 faiss-cpu==1.8.0.post1
 langchain-groq==0.0.1
+sentence-transformers==2.2.2

@@ -11,6 +11,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 import os
 import nltk
+os.system("pip install sentence-transformers")
 
 # Explicitly download NLTK data
 nltk.download('punkt', quiet=True)
